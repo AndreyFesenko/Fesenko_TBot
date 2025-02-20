@@ -59,7 +59,7 @@ namespace Fesenko_TBot
             {
                 var chatId = update.Message.Chat.Id;
                 var messageText = update.Message.Text;
-                Log.Logger.Information(messageText);
+                Log.Logger.Information("{MessageText} {ChatId}", messageText, chatId);
 
                 // Проверяем текущее состояние пользователя
                 if (!_userStates.ContainsKey(chatId))
@@ -113,8 +113,8 @@ namespace Fesenko_TBot
                 var callbackQuery = update.CallbackQuery;
                 var chatId = callbackQuery.Message.Chat.Id;
                 var data = callbackQuery.Data;
-                Log.Logger.Information(callbackQuery.Data);
-
+                Log.Logger.Information("{MessageText} {ChatId}", callbackQuery.Data, chatId);
+             
                 if (data.StartsWith("city_"))
                 {
                     cityName = data.Substring(5);
