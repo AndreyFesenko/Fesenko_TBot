@@ -1,7 +1,4 @@
-﻿using Telegram.Bot.Types;
-using Telegram.Bot.Types.Enums;
-using Telegram.Bot.Types.ReplyMarkups;
-using System.Globalization;
+﻿using Telegram.Bot.Types.Enums;
 using Serilog;
 using Serilog.Formatting.Compact;
 using Fesenko_TBot.Interfaces;
@@ -41,7 +38,7 @@ namespace Fesenko_TBot
             var messageHandler = host.Services.GetRequiredService<MessageHandler>();
             var callbackQueryHandler = host.Services.GetRequiredService<CallbackQueryHandler>();
 
-            telegramService.StartReceiving(async (bot, update, cancellationToken) =>
+            _ = telegramService.StartReceiving(async (bot, update, cancellationToken) =>
             {
                 if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text)
                 {

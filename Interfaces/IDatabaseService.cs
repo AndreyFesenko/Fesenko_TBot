@@ -1,5 +1,4 @@
 ﻿using Fesenko_TBot.Models;
-using Telegram.Bot.Types;
 
 namespace Fesenko_TBot.Interfaces
 {

@@ -3,7 +3,6 @@ using Fesenko_TBot.Services;
 using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using Serilog;
-using Fesenko_TBot.Models;
 
 namespace Fesenko_TBot
 {

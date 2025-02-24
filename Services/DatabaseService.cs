@@ -2,7 +2,6 @@
 using Fesenko_TBot.Models;
 using Microsoft.EntityFrameworkCore;
 using Serilog;
-using Telegram.Bot.Types;
 
 
 namespace Fesenko_TBot.Services
