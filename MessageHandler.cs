@@ -3,6 +3,7 @@ using Fesenko_TBot.Services;
 using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using Serilog;
+using Fesenko_TBot.Models;
 
 namespace Fesenko_TBot
 {
@@ -64,11 +65,13 @@ namespace Fesenko_TBot
 
                     if (isAuthenticated)
                     {
+                        Log.Logger.Information($"Авторизация пользователя {login} успешна.");
                         await _telegramService.SendMessage(chatId, "Авторизация успешна!");
                         await ShowCitySelection(chatId);
                     }
                     else
                     {
+                        Log.Logger.Information($"Пользователь {login} не прошел авторизацию.");
                         await _telegramService.SendMessage(chatId, "Неверный логин или пароль. Чтобы повторно ввести пароль нажмите /start");
                     }
 

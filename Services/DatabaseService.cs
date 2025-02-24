@@ -1,6 +1,7 @@
 ﻿using Fesenko_TBot.Interfaces;
 using Fesenko_TBot.Models;
 using Microsoft.EntityFrameworkCore;
+using Serilog;
 using Telegram.Bot.Types;
 
 
@@ -50,15 +51,28 @@ namespace Fesenko_TBot.Services
 
         public async Task AssignEngineerToIncidentAsync(int engineerId, int incidentId)
         {
-            var incident = await _dbContext.Incident.FirstOrDefaultAsync(i => i.IdInc == incidentId);
-            var engineer = await _dbContext.Engineer.FirstOrDefaultAsync(e => e.IdEng == engineerId);
-
-            if (incident != null && engineer != null)
+            try
             {
+                var incident = await _dbContext.Incident.FirstOrDefaultAsync(i => i.IdInc == incidentId);
+                var engineer = await _dbContext.Engineer.FirstOrDefaultAsync(e => e.IdEng == engineerId);
+
+                if (incident == null || engineer == null)
+                {
+                    Log.Logger.Warning($"Инцидент {incidentId} или инженер {engineerId} не найдены.");
+                    return;
+                }
+
                 incident.IdEng = engineerId;
                 incident.Status = "assigned";
                 engineer.Status = "assigned";
                 await _dbContext.SaveChangesAsync();
+
+                Log.Logger.Information($"Инженер {engineer.NameEng} назначен на инцидент {incidentId}.");
+            }
+            catch (Exception ex)
+            {
+                Log.Logger.Error($"Ошибка при назначении инженера на инцидент: {ex.Message}");
+                throw;
             }
         }
 
