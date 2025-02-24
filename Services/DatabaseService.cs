@@ -10,10 +10,6 @@ namespace Fesenko_TBot.Services
     {
         private readonly OctopusDbContext _dbContext;
 
-        public async Task<Models.User> GetUserByLoginAsync(string login)
-        {
-            return await _dbContext.Users.FirstOrDefaultAsync(u => u.Login == login);
-        }
         public DatabaseService(OctopusDbContext dbContext)
         {
             _dbContext = dbContext;
@@ -64,6 +60,11 @@ namespace Fesenko_TBot.Services
                 engineer.Status = "assigned";
                 await _dbContext.SaveChangesAsync();
             }
+        }
+
+        public async Task<Models.User> GetUserByLoginAsync(string login)
+        {
+            return await _dbContext.Users.FirstOrDefaultAsync(u => u.Login == login);
         }
     }
 
