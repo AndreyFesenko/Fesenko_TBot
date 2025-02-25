@@ -10,6 +10,6 @@ namespace Fesenko_TBot.Interfaces
         Task<Incident> GetIncidentByIdAsync(int incidentId);
         Task<Engineer> GetEngineerByIdAsync(int engineerId);
         Task AssignEngineerToIncidentAsync(int engineerId, int incidentId);
-        Task<Models.User> GetUserByLoginAsync(string login);
+        ValueTask<Models.User> GetUserByLoginAsync(string login);
     }
 }

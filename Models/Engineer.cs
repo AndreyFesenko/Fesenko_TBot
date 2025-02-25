@@ -4,7 +4,7 @@
 namespace Fesenko_TBot.Models
 {
 
-    public class Engineer
+    public record Engineer
     {
         [Key]
         public int IdEng { get; set; }

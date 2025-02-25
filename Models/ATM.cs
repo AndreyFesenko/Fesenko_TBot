@@ -3,7 +3,7 @@
 
 namespace Fesenko_TBot.Models
 {
-    public class ATM
+    public record ATM
     {
         [Key]
         public int IdATM { get; set; }

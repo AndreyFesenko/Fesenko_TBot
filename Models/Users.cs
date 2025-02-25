@@ -2,7 +2,7 @@
 
 namespace Fesenko_TBot.Models
 {
-    public class User
+    public record User
     {
         [Key]
         public string Login { get; set; }

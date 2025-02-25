@@ -4,6 +4,8 @@ using Telegram.Bot.Types.Enums;
 using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using Serilog;
+using System.Text;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Fesenko_TBot
 {
@@ -26,18 +28,17 @@ namespace Fesenko_TBot
             var chatId = callbackQuery.Message.Chat.Id;
             var data = callbackQuery.Data;
             Log.Logger.Information("{MessageText} {ChatId}", data, chatId);
-
-            if (data.StartsWith("city_"))
+            if (data.StartsWith("city_", StringComparison.Ordinal))
             {
                 cityName = data.Substring(5);
                 await ShowIncidentsForCity(chatId, cityName);
             }
-            else if (data.StartsWith("incident_"))
+            else if (data.StartsWith("incident_", StringComparison.Ordinal))
             {
                 IdInc = int.Parse(data.Substring(9));
                 await ShowEngineersForIncident(chatId, IdInc);
             }
-            else if (data.StartsWith("engineer_"))
+            else if (data.StartsWith("engineer_", StringComparison.Ordinal))
             {
                 IdEng = int.Parse(data.Substring(9));
                 await ShowEngineerOptions(chatId, IdEng);
@@ -67,18 +68,18 @@ namespace Fesenko_TBot
         private async Task ShowIncidentsForCity(long chatId, string cityName)
         {
             var incidents = await _databaseService.GetIncidentsByCityAsync(cityName);
-            var message = $"Список открытых заявок в городе {cityName}\n\n";
+            var messageBuilder = new StringBuilder($"Список открытых заявок в городе {cityName}\n\n");
 
             foreach (var incident in incidents)
             {
                 var timeDifference = (incident.Deadline - DateTime.Now).TotalHours;
                 if (timeDifference < 6)
                 {
-                    message += $"🔥<b>{incident.IdInc}: {incident.Description} (до {incident.Deadline})</b>\n";
+                    messageBuilder.AppendLine($"🔥<b>{incident.IdInc}: {incident.Description} (до {incident.Deadline})</b>");
                 }
                 else
                 {
-                    message += $"{incident.IdInc}: {incident.Description} (до {incident.Deadline})\n";
+                    messageBuilder.AppendLine($"{incident.IdInc}: {incident.Description} (до {incident.Deadline})");
                 }
             }
 
@@ -94,7 +95,7 @@ namespace Fesenko_TBot
                 }).ToArray()
             );
 
-            await _telegramService.SendMessage(chatId, message, ParseMode.Html, replyMarkup: keyboard);
+            await _telegramService.SendMessage(chatId, messageBuilder.ToString(), ParseMode.Html, replyMarkup: keyboard);
         }
 
         private async Task ShowEngineersForIncident(long chatId, int incidentId)
@@ -150,10 +151,24 @@ namespace Fesenko_TBot
             var engineer = await _databaseService.GetEngineerByIdAsync(engineerId);
             if (engineer != null)
             {
-                string[] parts = engineer.Coordinates.Split(',');
-                double latitude = double.Parse(parts[0], CultureInfo.InvariantCulture);
-                double longitude = double.Parse(parts[1], CultureInfo.InvariantCulture);
-                await _telegramService.SendLocation(chatId, latitude, longitude);
+
+                if (string.IsNullOrWhiteSpace(engineer?.Coordinates) || !engineer.Coordinates.Contains(","))
+                {
+                    await _telegramService.SendMessage(chatId, "Ошибка: у инженера отсутствуют координаты.");
+                    Log.Logger.Information("Ошибка: у инженера отсутствуют координаты.");
+                    return;
+                }
+                var parts = engineer.Coordinates.Split(',');
+                if (double.TryParse(parts[0], NumberStyles.Float, CultureInfo.InvariantCulture, out double latitude) &&
+                    double.TryParse(parts[1], NumberStyles.Float, CultureInfo.InvariantCulture, out double longitude))
+                {
+                    await _telegramService.SendLocation(chatId, latitude, longitude);
+                }
+                else
+                {
+                    await _telegramService.SendMessage(chatId, "Ошибка: неверный формат координат.");
+                    Log.Logger.Information("Ошибка: неверный формат координат.");
+                }
 
                 var keyboard = new InlineKeyboardMarkup(new[]
                 {

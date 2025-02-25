@@ -3,7 +3,7 @@
 
 namespace Fesenko_TBot.Models
 {
-    public class Incident
+    public record Incident
     {
         [Key]
         public int IdInc { get; set; }

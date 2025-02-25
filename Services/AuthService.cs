@@ -14,12 +14,27 @@ namespace Fesenko_TBot.Services
         }
 
         // Метод для хэширования пароля
+        //private string HashPassword(string password)
+        //{
+        //    using (var sha256 = SHA256.Create())
+        //    {
+        //        var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
+        //        return BitConverter.ToString(hashedBytes).Replace("-", "").ToLower();
+        //    }
+        //}
+
         private string HashPassword(string password)
         {
-            using (var sha256 = SHA256.Create())
+            byte[] salt = new byte[16];
+            using (var rng = RandomNumberGenerator.Create())
             {
-                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(password));
-                return BitConverter.ToString(hashedBytes).Replace("-", "").ToLower();
+                rng.GetBytes(salt);
+            }
+
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256))
+            {
+                byte[] hash = pbkdf2.GetBytes(32);
+                return Convert.ToBase64String(salt.Concat(hash).ToArray());
             }
         }
 
@@ -28,13 +43,26 @@ namespace Fesenko_TBot.Services
         {
             var hashedPassword = HashPassword(password);
             var user = await _databaseService.GetUserByLoginAsync(login);
-
-            if (user != null && user.PasswordHash == hashedPassword)
+            var check = VerifyPassword(password, user.PasswordHash);
+            if (user != null && check)
             {
                 return true;
             }
 
             return false;
+        }
+
+        public bool VerifyPassword(string password, string storedHash)
+        {
+            byte[] storedBytes = Convert.FromBase64String(storedHash);
+            byte[] salt = storedBytes.Take(16).ToArray();
+            byte[] storedHashBytes = storedBytes.Skip(16).ToArray();
+
+            using (var pbkdf2 = new Rfc2898DeriveBytes(password, salt, 100000, HashAlgorithmName.SHA256))
+            {
+                byte[] hash = pbkdf2.GetBytes(32);
+                return hash.SequenceEqual(storedHashBytes);
+            }
         }
 
     }

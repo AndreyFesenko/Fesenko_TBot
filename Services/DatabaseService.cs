@@ -12,7 +12,7 @@ namespace Fesenko_TBot.Services
 
         public DatabaseService(OctopusDbContext dbContext)
         {
-            _dbContext = dbContext;
+            _dbContext = dbContext ?? throw new ArgumentNullException(nameof(dbContext));
         }
 
         public async Task<List<string>> GetCitiesAsync()
@@ -21,6 +21,7 @@ namespace Fesenko_TBot.Services
                 .Select(i => i.City)
                 .Distinct()
                 .ToListAsync();
+
         }
 
         public async Task<List<Incident>> GetIncidentsByCityAsync(string cityName)
@@ -29,6 +30,7 @@ namespace Fesenko_TBot.Services
                 .Where(i => i.City == cityName && i.Status == "Open")
                 .OrderBy(i => i.Deadline)
                 .ToListAsync();
+
         }
 
         public async Task<List<Engineer>> GetEngineersByCityAsync(string cityName)
@@ -36,6 +38,7 @@ namespace Fesenko_TBot.Services
             return await _dbContext.Engineer
                 .Where(e => e.Status == "Free" && e.City == cityName)
                 .ToListAsync();
+
         }
 
         public async Task<Incident> GetIncidentByIdAsync(int incidentId)
@@ -71,11 +74,10 @@ namespace Fesenko_TBot.Services
             catch (Exception ex)
             {
                 Log.Logger.Error($"Ошибка при назначении инженера на инцидент: {ex.Message}");
-                throw;
             }
         }
 
-        public async Task<Models.User> GetUserByLoginAsync(string login)
+        public async ValueTask<Models.User> GetUserByLoginAsync(string login)
         {
             return await _dbContext.Users.FirstOrDefaultAsync(u => u.Login == login);
         }

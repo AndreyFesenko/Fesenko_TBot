@@ -20,24 +20,31 @@ namespace Fesenko_TBot
                 .WriteTo.File(new RenderedCompactJsonFormatter(), config.LogFilePath, rollingInterval: RollingInterval.Day)
                 .CreateLogger();
 
+            //Используем Generic Host для управления жизненным циклом приложения и регистрируем зависимости в DI-контейнере
             var host = Host.CreateDefaultBuilder(args)
                 .ConfigureServices((context, services) =>
                 {
-                    services.AddSingleton<Config>();
                     services.AddDbContext<OctopusDbContext>();
+                    services.AddSingleton<Config>();
                     services.AddSingleton<IDatabaseService, DatabaseService>();
-                    services.AddSingleton<ITelegramService>(provider =>
-                        new TelegramService(Environment.GetEnvironmentVariable("BotToken", EnvironmentVariableTarget.User)));
+                    var botToken = Environment.GetEnvironmentVariable("BotToken", EnvironmentVariableTarget.User);
+                    if (string.IsNullOrWhiteSpace(botToken))
+                    {
+                        throw new InvalidOperationException("BotToken не задан в переменных окружения.");
+                    }
+                    services.AddSingleton<ITelegramService>(provider => new TelegramService(botToken));
                     services.AddSingleton<AuthService>();
                     services.AddSingleton<MessageHandler>();
                     services.AddSingleton<CallbackQueryHandler>();
                 })
                 .Build();
 
+            //Получение сервисов из DI-контейнера
             var telegramService = host.Services.GetRequiredService<ITelegramService>();
             var messageHandler = host.Services.GetRequiredService<MessageHandler>();
             var callbackQueryHandler = host.Services.GetRequiredService<CallbackQueryHandler>();
 
+            //Запуск обработки входящих сообщений
             _ = telegramService.StartReceiving(async (bot, update, cancellationToken) =>
             {
                 if (update.Type == UpdateType.Message && update.Message.Type == MessageType.Text)
