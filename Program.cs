@@ -5,11 +5,10 @@ using Fesenko_TBot.Interfaces;
 using Fesenko_TBot.Services;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.DependencyInjection;
-
+using StackExchange.Redis;
 
 namespace Fesenko_TBot
 {
-
     public class Program
     {
         public static async Task Main(string[] args)
@@ -36,10 +35,28 @@ namespace Fesenko_TBot
                     services.AddSingleton<AuthService>();
                     services.AddSingleton<MessageHandler>();
                     services.AddSingleton<CallbackQueryHandler>();
+
+                    // Регистрация подключения к Redis
+                    var redisConnectionString = Environment.GetEnvironmentVariable("RedisConnectionString", EnvironmentVariableTarget.User);
+                    if (string.IsNullOrWhiteSpace(redisConnectionString))
+                    {
+                        throw new InvalidOperationException("RedisConnectionString не задан в переменных окружения.");
+                    }
+                    services.AddStackExchangeRedisCache(options =>
+                    {
+                        options.Configuration = Environment.GetEnvironmentVariable(redisConnectionString, EnvironmentVariableTarget.User);
+                        options.InstanceName = "OctopusBot_";
+                    });
+
+                    services.AddSingleton<IConnectionMultiplexer>(ConnectionMultiplexer.Connect(
+                        Environment.GetEnvironmentVariable("RedisConnectionString", EnvironmentVariableTarget.User)));
+                    services.AddSingleton<IRedisService, RedisService>();
                 })
+                
                 .Build();
 
             //Получение сервисов из DI-контейнера
+            
             var telegramService = host.Services.GetRequiredService<ITelegramService>();
             var messageHandler = host.Services.GetRequiredService<MessageHandler>();
             var callbackQueryHandler = host.Services.GetRequiredService<CallbackQueryHandler>();
