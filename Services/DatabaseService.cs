@@ -16,6 +16,27 @@ namespace Fesenko_TBot.Services
             _redisService = redisService;
         }
 
+        public async Task<ATM> GetATMByIdAsync(string atmId)
+        {
+            var cacheKey = $"atm_{atmId}";
+            var cachedATM = await _redisService.GetAsync<ATM>(cacheKey);
+
+            if (cachedATM != null)
+            {
+                return cachedATM;
+            }
+
+            var atm = await _dbContext.ATM
+                .FirstOrDefaultAsync(a => a.IdATM == atmId);
+
+            if (atm != null)
+            {
+                await _redisService.SetAsync(cacheKey, atm, TimeSpan.FromMinutes(5));
+            }
+
+            return atm;
+        }
+
         public async Task<List<string>> GetCitiesAsync()
         {
             var cacheKey = "cities";

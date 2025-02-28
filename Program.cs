@@ -23,6 +23,7 @@ namespace Fesenko_TBot
             var host = Host.CreateDefaultBuilder(args)
                 .ConfigureServices((context, services) =>
                 {
+                    services.AddHttpClient<OsrmService>();
                     services.AddDbContext<OctopusDbContext>();
                     services.AddSingleton<Config>();
                     services.AddSingleton<IDatabaseService, DatabaseService>();

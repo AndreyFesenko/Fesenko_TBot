@@ -6,6 +6,9 @@ using Telegram.Bot.Types;
 using Serilog;
 using System.Text;
 using static System.Runtime.InteropServices.JavaScript.JSType;
+using Microsoft.EntityFrameworkCore;
+using Fesenko_TBot.Services;
+using Fesenko_TBot.Models;
 
 namespace Fesenko_TBot
 {
@@ -13,14 +16,16 @@ namespace Fesenko_TBot
     {
         private readonly ITelegramService _telegramService;
         private readonly IDatabaseService _databaseService;
+        private readonly IRedisService _redisService;
         private int IdEng;
         private int IdInc;
         private string cityName;
 
-        public CallbackQueryHandler(ITelegramService telegramService, IDatabaseService databaseService)
+        public CallbackQueryHandler(ITelegramService telegramService, IDatabaseService databaseService, IRedisService redisService)
         {
             _telegramService = telegramService;
             _databaseService = databaseService;
+            _redisService = redisService;
         }
 
         public async Task HandleCallbackQueryAsync(CallbackQuery callbackQuery)
@@ -101,35 +106,235 @@ namespace Fesenko_TBot
         private async Task ShowEngineersForIncident(long chatId, int incidentId)
         {
             var incident = await _databaseService.GetIncidentByIdAsync(incidentId);
-            var engineers = await _databaseService.GetEngineersByCityAsync(incident.City);
 
-            var message = $"<b>Заявка: {incidentId}. Описание неисправности: {incident.Description}\nКонтрольный срок: {incident.Deadline} \nУслуга по договору: {incident.Service} \n\n👨‍🏭 Свободные инженеры:</b>\n";
+            if (incident == null || string.IsNullOrEmpty(incident.ATM))
+            {
+                await _telegramService.SendMessage(chatId, "Ошибка: инцидент не найден или отсутствует связанное устройство.");
+                return;
+            }
+
+            var atm = await _databaseService.GetATMByIdAsync(incident.ATM);
+
+            if (atm == null)
+            {
+                await _telegramService.SendMessage(chatId, "Ошибка: устройство не найдено.");
+                return;
+            }
+
+            var engineers = await _databaseService.GetEngineersByCityAsync(incident.City);
+            var osrmService = new OsrmService(new HttpClient());
+            var engineersWithDistance = new List<(Engineer engineer, double distance)>();
+            var engineersWithoutDistance = new List<Engineer>(); // Список для инженеров без дистанции
+
+            foreach (var engineer in engineers)
+            {
+                if (string.IsNullOrEmpty(engineer.Coordinates) || string.IsNullOrEmpty(atm.Coordinates))
+                {
+                    // Если у инженера или устройства нет координат, добавляем его в список без дистанции
+                    engineersWithoutDistance.Add(engineer);
+                    continue;
+                }
+
+                // Формируем ключ для Redis
+                var cacheKey = $"distance_{engineer.Coordinates}_{atm.Coordinates}";
+                var cachedDistance = await _redisService.GetAsync<double>(cacheKey);
+
+                double distance;
+                if (cachedDistance != default)
+                {
+                    distance = cachedDistance;
+                }
+                else
+                {
+                    // Если расстояния нет в кэше, запрашиваем его через API
+                    distance = await osrmService.GetDistanceAsync(engineer.Coordinates, atm.Coordinates);
+                    // Сохраняем расстояние в Redis на 1 час
+                    await _redisService.SetAsync(cacheKey, distance, TimeSpan.FromHours(1));
+                }
+
+                engineersWithDistance.Add((engineer, distance));
+            }
+
+            // Сортируем инженеров с дистанцией по расстоянию
+            engineersWithDistance.Sort((x, y) => x.distance.CompareTo(y.distance));
+
+            var message = new StringBuilder();
+            message.AppendLine($"<b>Заявка: {incidentId}. Описание неисправности: {incident.Description}</b>");
+            message.AppendLine($"<b>Контрольный срок: {incident.Deadline}</b>");
+            message.AppendLine($"<b>Услуга по договору: {incident.Service}</b>");
+            message.AppendLine("\n<b>👨‍🏭 Свободные инженеры:</b>");
 
             var keyboardButtons = new List<List<InlineKeyboardButton>>();
 
-            for (int i = 0; i < engineers.Count; i += 2)
+            // Добавляем инженеров с дистанцией
+            foreach (var (engineer, distance) in engineersWithDistance)
             {
-                var row = new List<InlineKeyboardButton>();
-                row.Add(InlineKeyboardButton.WithCallbackData(engineers[i].NameEng, $"engineer_{engineers[i].IdEng}"));
+                var buttonText = $"{engineer.NameEng} ({distance:F2} км)";
+                keyboardButtons.Add(new List<InlineKeyboardButton>
+                 {
+                    InlineKeyboardButton.WithCallbackData(buttonText, $"engineer_{engineer.IdEng}")
+                });
+                    }
 
-                if (i + 1 < engineers.Count)
+                    // Добавляем инженеров без дистанции
+                    foreach (var engineer in engineersWithoutDistance)
+                    {
+                        var buttonText = $"{engineer.NameEng} (расстояние неизвестно)";
+                        keyboardButtons.Add(new List<InlineKeyboardButton>
                 {
-                    row.Add(InlineKeyboardButton.WithCallbackData(engineers[i + 1].NameEng, $"engineer_{engineers[i + 1].IdEng}"));
-                }
+                    InlineKeyboardButton.WithCallbackData(buttonText, $"engineer_{engineer.IdEng}")
+                });
+                    }
 
-                keyboardButtons.Add(row);
-            }
-
-            keyboardButtons.Add(new List<InlineKeyboardButton>
-        {
-        InlineKeyboardButton.WithCallbackData("📋  Вернуться к выбору заявок", "back_to_incidents"),
-        InlineKeyboardButton.WithCallbackData("🏘️  Вернуться к выбору города", "back_to_city")
-        });
+                        // Добавляем кнопки навигации
+                        keyboardButtons.Add(new List<InlineKeyboardButton>
+                {
+                    InlineKeyboardButton.WithCallbackData("📋  Вернуться к выбору заявок", "back_to_incidents"),
+                    InlineKeyboardButton.WithCallbackData("🏘️  Вернуться к выбору города", "back_to_city")
+                });
 
             var keyboard = new InlineKeyboardMarkup(keyboardButtons);
 
-            await _telegramService.SendMessage(chatId, message, ParseMode.Html, replyMarkup: keyboard);
+            await _telegramService.SendMessage(chatId, message.ToString(), ParseMode.Html, replyMarkup: keyboard);
         }
+
+        //    private async Task ShowEngineersForIncident(long chatId, int incidentId)
+        //    {
+        //        var incident = await _databaseService.GetIncidentByIdAsync(incidentId);
+
+        //        if (incident == null || string.IsNullOrEmpty(incident.ATM))
+        //        {
+        //            await _telegramService.SendMessage(chatId, "Ошибка: инцидент не найден или отсутствует связанное устройство.");
+        //            return;
+        //        }
+
+        //        var atm = await _databaseService.GetATMByIdAsync(incident.ATM);
+
+        //        if (atm == null)
+        //        {
+        //            await _telegramService.SendMessage(chatId, "Ошибка: устройство не найдено.");
+        //            return;
+        //        }
+
+        //        var engineers = await _databaseService.GetEngineersByCityAsync(incident.City);
+        //        var osrmService = new OsrmService(new HttpClient());
+        //        var engineersWithDistance = new List<(Engineer engineer, double distance)>();
+
+        //        foreach (var engineer in engineers)
+        //        {
+        //            if (string.IsNullOrEmpty(engineer.Coordinates) || string.IsNullOrEmpty(atm.Coordinates))
+        //            {
+        //                continue;
+        //            }
+
+        //            // Формируем ключ для Redis
+        //            var cacheKey = $"distance_{engineer.Coordinates}_{atm.Coordinates}";
+        //            var cachedDistance = await _redisService.GetAsync<double>(cacheKey);
+
+        //            double distance;
+        //            if (cachedDistance != default)
+        //            {
+        //                distance = cachedDistance;
+        //            }
+        //            else
+        //            {
+        //                // Если расстояния нет в кэше, запрашиваем его через API
+        //                distance = await osrmService.GetDistanceAsync(engineer.Coordinates, atm.Coordinates);
+        //                // Сохраняем расстояние в Redis на 1 час
+        //                await _redisService.SetAsync(cacheKey, distance, TimeSpan.FromHours(1));
+        //            }
+
+        //            engineersWithDistance.Add((engineer, distance));
+        //        }
+
+        //        engineersWithDistance.Sort((x, y) => x.distance.CompareTo(y.distance));
+
+        //        var message = $"<b>Заявка: {incidentId}. Описание неисправности: {incident.Description}\nКонтрольный срок: {incident.Deadline} \nУслуга по договору: {incident.Service} \n\n👨‍🏭 Свободные инженеры:</b>\n";
+
+        //        var keyboardButtons = new List<List<InlineKeyboardButton>>();
+
+        //        foreach (var (engineer, distance) in engineersWithDistance)
+        //        {
+        //            var buttonText = $"{engineer.NameEng} ({distance:F2} км)";
+        //            keyboardButtons.Add(new List<InlineKeyboardButton>
+        //    {
+        //        InlineKeyboardButton.WithCallbackData(buttonText, $"engineer_{engineer.IdEng}")
+        //    });
+        //        }
+
+        //        keyboardButtons.Add(new List<InlineKeyboardButton>
+        //{
+        //    InlineKeyboardButton.WithCallbackData("📋  Вернуться к выбору заявок", "back_to_incidents"),
+        //    InlineKeyboardButton.WithCallbackData("🏘️  Вернуться к выбору города", "back_to_city")
+        //});
+
+        //        var keyboard = new InlineKeyboardMarkup(keyboardButtons);
+
+        //        await _telegramService.SendMessage(chatId, message, ParseMode.Html, replyMarkup: keyboard);
+        //    }
+
+        //private async Task ShowEngineersForIncident(long chatId, int incidentId)
+        //{
+        //    var incident = await _databaseService.GetIncidentByIdAsync(incidentId);
+
+        //    if (incident == null || string.IsNullOrEmpty(incident.ATM))
+        //    {
+        //        await _telegramService.SendMessage(chatId, "Ошибка: инцидент не найден или отсутствует связанное устройство.");
+        //        return;
+        //    }
+
+        //    //if (!int.TryParse(incident.ATM, out int atmId))
+        //    //{
+        //    //    await _telegramService.SendMessage(chatId, "Ошибка: неверный формат идентификатора устройства.");
+        //    //    return;
+        //    //}
+
+        //    var atm = await _databaseService.GetATMByIdAsync(incident.ATM);
+
+        //    if (atm == null || string.IsNullOrEmpty(atm.Coordinates))
+        //    {
+        //        await _telegramService.SendMessage(chatId, "Ошибка: у устройства отсутствуют координаты.");
+        //        return;
+        //    }
+
+        //    var engineers = await _databaseService.GetEngineersByCityAsync(incident.City);
+        //    var osrmService = new OsrmService(new HttpClient());
+        //    var engineersWithDistance = new List<(Engineer engineer, double distance)>();
+
+        //    foreach (var engineer in engineers)
+        //    {
+        //        if (string.IsNullOrEmpty(engineer.Coordinates))
+        //            continue;
+
+        //        var distance = await osrmService.GetDistanceAsync(engineer.Coordinates, atm.Coordinates);
+        //        engineersWithDistance.Add((engineer, distance));
+        //    }
+
+        //    engineersWithDistance.Sort((x, y) => x.distance.CompareTo(y.distance));
+
+        //    var message = $"<b>Заявка: {incidentId}. Описание неисправности: {incident.Description}\nКонтрольный срок: {incident.Deadline} \nУслуга по договору: {incident.Service} \n\n👨‍🏭 Свободные инженеры:</b>\n";
+
+        //    var keyboardButtons = new List<List<InlineKeyboardButton>>();
+
+        //    foreach (var (engineer, distance) in engineersWithDistance)
+        //    {
+        //        var buttonText = $"{engineer.NameEng} ({distance:F2} км)";
+        //        keyboardButtons.Add(new List<InlineKeyboardButton>
+        //{
+        //    InlineKeyboardButton.WithCallbackData(buttonText, $"engineer_{engineer.IdEng}")
+        //});
+        //    }
+
+        //    keyboardButtons.Add(new List<InlineKeyboardButton>
+        //{
+        //InlineKeyboardButton.WithCallbackData("📋  Вернуться к выбору заявок", "back_to_incidents"),
+        //InlineKeyboardButton.WithCallbackData("🏘️  Вернуться к выбору города", "back_to_city")
+        //});
+
+        //    var keyboard = new InlineKeyboardMarkup(keyboardButtons);
+
+        //    await _telegramService.SendMessage(chatId, message, ParseMode.Html, replyMarkup: keyboard);
+        //}
 
         private async Task ShowEngineerOptions(long chatId, int engineerId)
         {

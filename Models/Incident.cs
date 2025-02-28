@@ -11,6 +11,7 @@ namespace Fesenko_TBot.Models
         public string? Service { get; set; }
         public string? Status { get; set; }
         public string? City { get; set; }
+        public string? ATM { get; set; }
         public int? IdEng { get; set; }
         public DateTime Date { get; set; }
         public DateTime Deadline { get; set; }
