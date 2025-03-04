@@ -1,5 +1,4 @@
-﻿using StackExchange.Redis;
-
+﻿
 namespace Fesenko_TBot.Interfaces;
 public interface IRedisService
 {

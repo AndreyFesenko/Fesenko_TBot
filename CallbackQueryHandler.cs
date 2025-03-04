@@ -5,7 +5,6 @@ using Telegram.Bot.Types.ReplyMarkups;
 using Telegram.Bot.Types;
 using Serilog;
 using System.Text;
-using static System.Runtime.InteropServices.JavaScript.JSType;
 using Microsoft.EntityFrameworkCore;
 using Fesenko_TBot.Services;
 using Fesenko_TBot.Models;

@@ -1,6 +1,4 @@
-﻿using System.Net.Http;
-using System.Text.Json;
-using System.Threading.Tasks;
+﻿using System.Text.Json;
 
 namespace Fesenko_TBot.Services;
 public class OsrmService
@@ -16,7 +14,6 @@ public class OsrmService
     {
         start = start.Replace(" ", "");
         end = end.Replace(" ", "");
-        // Меняем широту и долготу местами
         var startCoords = start.Split(',');
         var endCoords = end.Split(',');
 
